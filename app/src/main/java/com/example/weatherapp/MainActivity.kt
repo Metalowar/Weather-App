@@ -53,23 +53,29 @@ import com.example.weatherapp.ui.theme.WeatherAppTheme
 import com.example.weatherapp.BuildConfig
 import androidx.activity.viewModels
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.layout.Row
+import androidx.compose.material3.AlertDialog
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.text.TextStyle
+import android.content.Context
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.ui.platform.LocalContext
 
 
 // Основна активність додатку, яка відображає головний екран користувачеві.
 // Відповідає за виклик WeatherScreen та управління UI.
 
 class MainActivity : ComponentActivity() {
-    private val viewModel: WeatherViewModel by viewModels()
+    private val viewModel: WeatherViewModel by viewModels() // Ініціалізація ViewModel
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContent {
             WeatherAppTheme {
-                NavGraph(viewModel = viewModel)
+                NavGraph(viewModel = viewModel)  // Передаємо ViewModel у NavGraph
             }
         }
     }
@@ -78,18 +84,15 @@ class MainActivity : ComponentActivity() {
 
 @Composable
 fun NavGraph(startDestination: String = "weather", viewModel: WeatherViewModel) {
-    // Create a navigation controller
     val navController = rememberNavController()
 
     // Set up the navigation host with the start destination
     NavHost(navController, startDestination = startDestination) {
-        // Define the composable for the "weather" screen
         composable("weather") {
-            WeatherScreen(navController, viewModel)
+            WeatherScreen(navController, viewModel) // Передаємо viewModel в WeatherScreen
         }
-        // Define the composable for the "screen_two" screen
         composable("screen_two") {
-            ScreenTwoScreen(navController, viewModel)
+            ScreenTwoScreen(navController, viewModel) // Передаємо viewModel в ScreenTwoScreen
         }
     }
 }
@@ -100,7 +103,6 @@ fun ScreenTwoScreen(navController: NavController?, viewModel: WeatherViewModel, 
     // Collect the weather data and forecast data state
     val weatherData by viewModel.weatherData.collectAsState()
     val forecastData by viewModel.forecastData.collectAsState()
-
     // Create a Box layout to fill the screen and center its content
     Box(
         modifier = Modifier.fillMaxSize(),
@@ -224,12 +226,12 @@ fun ScreenTwoScreen(navController: NavController?, viewModel: WeatherViewModel, 
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun WeatherScreen(navController: NavController?, viewModel: WeatherViewModel) {
+fun WeatherScreen(navController: NavController?, viewModel: WeatherViewModel, context: Context) {
     val cities by viewModel.cities.collectAsState()
-    var city by remember {
-        mutableStateOf("")
-    }
-        val apiKey = BuildConfig.API_KEY
+    val recentCities by viewModel.recentCities.collectAsState()
+    var city by remember { mutableStateOf("") }
+    var showRecentDialog by remember { mutableStateOf(false) }
+    val apiKey = BuildConfig.API_KEY
 
     Box(
         modifier = Modifier
@@ -246,33 +248,20 @@ fun WeatherScreen(navController: NavController?, viewModel: WeatherViewModel) {
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Top
         ) {
-            Spacer(modifier = Modifier.height(180.dp))
+            // Іконка для перегляду списку нещодавно відвіданих міст
+            IconButton(onClick = { showRecentDialog = true }) {
+                Icon(
+                    imageVector = Icons.Default.Refresh, // Іконка "історія"
+                    contentDescription = "Недавні міста"
+                )
+            }
+
+            // Поле для введення назви міста
             OutlinedTextField(
                 value = city,
                 onValueChange = { city = it },
                 label = { Text("Введіть місто") },
-                placeholder = { Text("Введіть місто") },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clickable { city = "" },
-                shape = RoundedCornerShape(30.dp),
-                colors = TextFieldDefaults.colors(
-                    focusedContainerColor = Color.White,
-                    unfocusedContainerColor = Color.White,
-                    unfocusedIndicatorColor = BlueJC,
-                    focusedIndicatorColor = Color.Black,
-                    focusedLabelColor = Color.White
-                ),
-                trailingIcon = {
-                    if (city.isNotEmpty()) {
-                        IconButton(onClick = { city = "" }) {
-                            Icon(
-                                imageVector = Icons.Default.Close,
-                                contentDescription = "Очистити текст"
-                            )
-                        }
-                    }
-                }
+                modifier = Modifier.fillMaxWidth()
             )
 
             Spacer(modifier = Modifier.height(16.dp))
@@ -282,53 +271,58 @@ fun WeatherScreen(navController: NavController?, viewModel: WeatherViewModel) {
             ) {
                 Text(text = "Пошук")
             }
+
             Spacer(modifier = Modifier.height(16.dp))
 
             if (cities.isNotEmpty()) {
-                LazyColumn(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .fillMaxHeight()
-                        .padding(8.dp)
-                ) {
+                LazyColumn {
                     items(cities) { city ->
                         Card(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(8.dp)
                                 .clickable {
-                                    println("Fetching coordinates for city: ${city.name}")  // Log API call
-                                    viewModel.fetchCityCoordinates(city.name, apiKey)
+                                    viewModel.addCityToRecent(context, city.name) // Додати до списку
                                     navController?.navigate("screen_two")
-                                },
-                            shape = RoundedCornerShape(8.dp),
-                            elevation = CardDefaults.elevatedCardElevation(4.dp),
+                                }
                         ) {
-                            Column(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .background(PastelBlue)
-                                    .padding(16.dp)
-                            ) {
-                                Text(
-                                    text = "${city.name}, ${city.country}",
-                                    style = MaterialTheme.typography.bodyLarge,
-                                    color = Color.Black
-                                )
-                                Text(
-                                    text = "Регіон: ${city.region}",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = Color.DarkGray
-                                )
-                            }
+                            Text(text = city.name)
                         }
                     }
-
                 }
+            }
+
+            // Діалог із нещодавно відвіданими містами
+            if (showRecentDialog) {
+                AlertDialog(
+                    onDismissRequest = { showRecentDialog = false },
+                    title = { Text("Нещодавно відвідані міста") },
+                    text = {
+                        LazyColumn {
+                            items(recentCities) { city ->
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Text(text = city)
+                                    IconButton(
+                                        onClick = { viewModel.removeCityFromRecent(context, city) }
+                                    ) {
+                                        Icon(imageVector = Icons.Default.Delete, contentDescription = "Видалити")
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    confirmButton = {
+                        Button(onClick = { showRecentDialog = false }) {
+                            Text("Закрити")
+                        }
+                    }
+                )
             }
         }
     }
-
 }
+
 
 //     Прев'ю компонента WeatherScreen для перегляду в режимі розробки.

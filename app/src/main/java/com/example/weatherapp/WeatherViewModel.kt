@@ -7,13 +7,41 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 import com.google.gson.Gson
 import retrofit2.HttpException
+import android.content.Context
+import kotlinx.coroutines.flow.collect
 
 //   ViewModel для управління запитами до GeoDb API та зберіганням стану отриманих даних.
 //   Здійснює пошук міст та надає доступ до результатів через StateFlow.
 
 
 
-open class WeatherViewModel : ViewModel() {
+open class WeatherViewModel(context: Context) : ViewModel() {
+
+    ///// Зміни для стора даних
+    private val _recentCities = MutableStateFlow<List<String>>(emptyList())
+    val recentCities: StateFlow<List<String>> = _recentCities
+
+    init {
+        // Спостерігати за змінами в DataStore
+        viewModelScope.launch {
+            DataStoreUtils.getRecentCities(context).collect { cities ->
+                _recentCities.value = cities.toList()
+            }
+        }
+    }
+
+    fun addCityToRecent(context: Context, city: String) {
+        viewModelScope.launch {
+            DataStoreUtils.addCity(context, city)
+        }
+    }
+
+    fun removeCityFromRecent(context: Context, city: String) {
+        viewModelScope.launch {
+            DataStoreUtils.removeCity(context, city)
+        }
+    }
+    ////////Кінець змін
 
     private val weatherApi = WeatherApi.create()
     private val _rawResponse = MutableStateFlow<String?>(null)
